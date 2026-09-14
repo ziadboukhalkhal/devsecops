@@ -17,5 +17,16 @@ jobs:
           run: | 
             echo "Code checkout successful. Current directory contents:"
             ls -la
-            
+  
+  secrets-scan:
+    name: Secrets Scan (GitLeaks)
+    runs-on: ubuntu-latest
+    steps:
+        - uses: actions/checkout@v4
+          with:
+            fetch-depth: 0
+        - name: Run GitLeaks Scan
+          uses: gitleaks/gitleaks-action@v3
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
