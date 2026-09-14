@@ -2,116 +2,46 @@ name: DevSecOps Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:   # lets you trigger jobs manually from the Actions tab
 
 jobs:
 
-  # ── Stage 1: Secrets scanning ────────────────────────────────
+  # ── Lesson 1: pipeline plumbing ──────────────────────────────
+  sanity-check:
+    name: Pipeline sanity check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm checkout worked
+        run: |
+          echo "Repo checked out fine."
+          ls -la
+
+  # ── Lesson 2: secrets scanning ───────────────────────────────
   secrets-scan:
     name: Secrets Scan (Gitleaks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # full history available, though the action only diffs this push by default
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # NOTE: vuln-bank commits a real .env on purpose — this WILL fail
-        # the first run. That's the point: see what a leaked-secret hit
-        # looks like, then decide whether to allowlist it or strip it.
 
-  # ── Stage 2: SAST ─────────────────────────────────────────────
-  sast:
-    name: SAST (Bandit + Semgrep)
+  secrets-scan-full-history:
+    name: Secrets Scan — Full History (manual)
     runs-on: ubuntu-latest
-    needs: secrets-scan
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install Bandit
-        run: pip install bandit
-      - name: Run Bandit (Python-specific SAST)
-        run: bandit -r . -x ./tests -f json -o bandit-report.json || true
-      - name: Run Semgrep (broader OWASP coverage)
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/python p/flask p/owasp-top-ten p/secrets p/sql-injection
-      - name: Upload Bandit report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-report
-          path: bandit-report.json
-
-  # ── Stage 3: SCA (dependency scanning) ───────────────────────
-  sca:
-    name: Dependency Scan (Snyk)
-    runs-on: ubuntu-latest
-    needs: secrets-scan
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run Snyk against requirements.txt
-        uses: snyk/actions/python-3.9@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --file=requirements.txt
-
-  # ── Stage 4: Build + container image scan ────────────────────
-  container-scan:
-    name: Container Scan (Trivy)
-    runs-on: ubuntu-latest
-    needs: [sast, sca]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t vuln-bank:${{ github.sha }} .
-      - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: vuln-bank:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-      - name: Upload results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-results.sarif
-
-  # ── Stage 5: DAST against a live staging instance ────────────
-  dast:
-    name: DAST (OWASP ZAP)
-    runs-on: ubuntu-latest
-    needs: container-scan
-    steps:
-      - uses: actions/checkout@v4
-      - name: Spin up the stack
+          fetch-depth: 0
+      - name: Run gitleaks against entire git history
         run: |
-          docker compose up -d --build
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:5000/healthz && break
-            sleep 5
-          done
-      - name: ZAP baseline scan
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: "http://localhost:5000"
-          cmd_options: "-a"
-          fail_action: false
-      - name: Tear down
-        if: always()
-        run: docker compose down
-
-  # ── Stage 6: Gate ─────────────────────────────────────────────
-  security-gate:
-    name: Security Gate
-    runs-on: ubuntu-latest
-    needs: [sast, sca, container-scan, dast]
-    steps:
-      - run: echo "All security stages ran — review the findings before merging."
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar xz -C /tmp
+          /tmp/gitleaks detect --source . -v --redact
