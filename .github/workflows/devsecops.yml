@@ -3,6 +3,7 @@ name: DevSecOps Pipeline
 on:
   push:
     branches: [main]
+
   pull_request:
     branches: [main]
 
@@ -12,8 +13,10 @@ jobs:
   sanity-check:
     name: Pipeline sanity check
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Confirm checkout worked
         run: |
           echo "Repo checked out fine."
@@ -23,36 +26,55 @@ jobs:
   secrets-scan:
     name: Secrets Scan (Gitleaks)
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history available, though the action only diffs this push by default
+
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
 
   sast:
     name: SAST (Bandit + Semgrep)
     runs-on: ubuntu-latest
     needs: secrets-scan
+
     steps:
-        - uses: actions/checkout@v4
-        - uses: actions/setup-python@v4
-          with:
-            python-version: '3.11'
-        - name: Install Bandit
-          run: pip install bandit
-        - name: Run Bandit
-          run: bandit -r . -x ./tests -f sarif -o bandit-report.sarif || true
-        - name: Upload Bandit report
-          uses: actions/upload-artifact@v4
-          with:
-            name: bandit-report
-            path: bandit-report.sarif
-        - name: Run Semgrep
-          uses: semgrep/semgrep-action@v1
-          with:
-            config: >-
-                p/python p/flask p/owasp-top-ten p/sql-injection
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit
+        run: bandit -r . -x ./tests -f json -o bandit-report.json || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/flask \
+            --config p/owasp-top-ten \
+            --config p/sql-injection \
+            --json --output semgrep-report.json || true
+
+      - name: Upload Semgrep report
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
