@@ -55,4 +55,4 @@ jobs:
           uses: semgrep/semgrep-action@v1
           with:
             config: >-
-                p/python p/flast p/owasp-top-ten p/sql-injection
+                p/python p/flask p/owasp-top-ten p/sql-injection
