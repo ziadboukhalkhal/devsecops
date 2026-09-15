@@ -32,7 +32,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   sast:
     name: SAST (Bandit + Semgrep)
     runs-on: ubuntu-latest
@@ -66,7 +65,6 @@ jobs:
         with:
           name: semgrep-report
           path: semgrep-report.json
-
   sca:
     name: Dependency Scan (Snyk)
     runs-on: ubuntu-latest
@@ -80,7 +78,6 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high --file=requirements.txt --json-file-output=snyk-report.json
-
   container-scan:
     name: Container Scan (Trivy)
     runs-on: ubuntu-latest
