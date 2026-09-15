@@ -8,8 +8,6 @@ on:
     branches: [main]
 
 jobs:
-
-  # ── Lesson 1: pipeline plumbing ──────────────────────────────
   sanity-check:
     name: Pipeline sanity check
     runs-on: ubuntu-latest
@@ -21,8 +19,6 @@ jobs:
         run: |
           echo "Repo checked out fine."
           ls -la
-
-  # ── Lesson 2: secrets scanning ───────────────────────────────
   secrets-scan:
     name: Secrets Scan (Gitleaks)
     runs-on: ubuntu-latest
@@ -30,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history available, though the action only diffs this push by default
+          fetch-depth: 0 
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -41,29 +37,22 @@ jobs:
     name: SAST (Bandit + Semgrep)
     runs-on: ubuntu-latest
     needs: secrets-scan
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Install Bandit
         run: pip install bandit
-
       - name: Run Bandit
         run: bandit -r . -x ./tests -f json -o bandit-report.json || true
-
       - name: Upload Bandit report
         uses: actions/upload-artifact@v4
         with:
           name: bandit-report
           path: bandit-report.json
-
       - name: Install Semgrep
         run: pip install semgrep
-
       - name: Run Semgrep
         run: |
           semgrep scan \
@@ -72,14 +61,11 @@ jobs:
             --config p/owasp-top-ten \
             --config p/sql-injection \
             --json --output semgrep-report.json || true
-
       - name: Upload Semgrep report
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-report
           path: semgrep-report.json
-
-
 
   sca:
     name: Dependency Scan (Snyk)
@@ -93,4 +79,28 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --severity-threshold=high --file=requirements.txt --json-file-output=snyk-report.json 
+          args: --severity-threshold=high --file=requirements.txt --json-file-output=snyk-report.json
+
+  container-scan:
+    name: Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: [sast, sca]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run : docker build -t vuln-bank:${{ github.sha }} .
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vuln-bank:${{ github.sha }}
+          format: sarif
+          output: trivy-report.sarif
+          severity: CRITICAL,HIGH
+      - name: Upload Trivy report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-report.sarif
+
+  
+
+
